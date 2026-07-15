@@ -46,6 +46,20 @@ const ZODIAC_SIGNS = [
   { key: "pisces",      symbol: "♓", name: "Pisces",      dates: "Feb 19 – Mar 20" },
 ];
 
+const HOROSCOPE_FALLBACK = ZODIAC_SIGNS.reduce((map, sign) => {
+  map[sign.key] = {
+    symbol: sign.symbol,
+    prediction: `${sign.name} energy is strong today. Focus on balance, gentle momentum, and a fresh idea that feels right in your heart.`,
+    rating: 4,
+    luckyNumber: 7,
+    luckyColor: "Light Blue",
+    luckyTime: "Late afternoon",
+    moonPhase: "Waxing Crescent",
+    compatibleSign: "Gemini",
+  };
+  return map;
+}, {});
+
 /* A broad set of Philippine city presets with known lat/long,
    so the user doesn't have to look up coordinates themselves.       */
 const CITY_PRESETS = [
@@ -89,6 +103,19 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function isOffline() {
+  return typeof navigator !== "undefined" && !navigator.onLine;
+}
+
+function renderHoroscopeFallback(sign, data) {
+  renderHoroscope(sign, data);
+  const box = document.getElementById("horoscopeResult");
+  const note = document.createElement("p");
+  note.className = "fallback-note";
+  note.textContent = "This reading is a local fallback while the live API is unavailable.";
+  box.appendChild(note);
 }
 
 /* Show today's date in the header. */
@@ -142,12 +169,10 @@ async function fetchHoroscope(signKey) {
   const sign = ZODIAC_SIGNS.find((z) => z.key === signKey);
 
   box.innerHTML = `<div class="loading"><div class="spinner"></div>Fetching your reading...</div>`;
-
+  // Try the request a few times in case of transient network failures.
   try {
-    const res = await fetch(
-      `${CONFIG.VEDIKA_BASE}/daily/horoscope/${signKey}`,
-      { headers: vedikaHeaders() }
-    );
+    const url = `${CONFIG.VEDIKA_BASE}/daily/horoscope/${signKey}`;
+    const res = await fetchWithRetry(url, { headers: vedikaHeaders() }, 3, 600);
 
     if (!res.ok) throw new Error(`API returned status ${res.status}`);
 
@@ -157,11 +182,40 @@ async function fetchHoroscope(signKey) {
     renderHoroscope(sign, json.data);
   } catch (err) {
     console.error("Horoscope fetch error:", err);
+    const offline = isOffline();
+    const userMessage = offline
+      ? "No internet connection detected."
+      : "Could not load the horoscope right now.";
+
+    const fallback = HOROSCOPE_FALLBACK[signKey];
     box.innerHTML = `
       <div class="error-box">
-        😕 Couldn't load the horoscope right now. Please check your internet connection and try again.
+        😕 ${escapeHtml(userMessage)} Please check your network and try again.
+        <button id="retryHoroscope" class="btn btn-sm">Try again</button>
       </div>`;
+
+    box.querySelector("#retryHoroscope")?.addEventListener("click", () => fetchHoroscope(signKey));
+
+    if (fallback) renderHoroscopeFallback(sign, fallback);
   }
+}
+
+/* Helper: fetch with simple retry + exponential backoff for transient failures. */
+async function fetchWithRetry(url, options = {}, attempts = 3, baseDelay = 500) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, options);
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        const delay = baseDelay * Math.pow(2, i);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
 }
 
 /* Render the horoscope reading as a nice card. */
