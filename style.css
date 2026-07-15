@@ -181,6 +181,40 @@ body::before {
 }
 .chip strong { color: var(--purple-dk); }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.7rem;
+  margin: 0.9rem 0 0.8rem;
+}
+.detail-card {
+  background: #f7fbff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.8rem;
+}
+.detail-label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+.detail-card strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--purple-dk);
+  font-size: 1rem;
+}
+.chart-summary {
+  margin-top: 0.6rem;
+  color: var(--text);
+  background: rgba(47, 143, 209, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+}
+
 /* Birth chart SVG diagram — white background because that's how the API sends it */
 .chart-svg-wrap {
   background: #fff;
@@ -207,6 +241,24 @@ body::before {
   font-family: inherit;
 }
 .city-input:focus { outline: 2px solid var(--gold); border-color: var(--gold); }
+.chart-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.saved-charts {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1rem;
+}
+.saved-chart-card {
+  background: linear-gradient(160deg, #f4fafe, #e6f3fb);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+.saved-chart-card strong { color: var(--purple-dk); }
 
 .sky-grid {
   display: grid;
