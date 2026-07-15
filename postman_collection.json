@@ -1,0 +1,46 @@
+{
+  "info": {
+    "name": "Cosmic Daily — Vedika Astrology API (Sandbox)",
+    "description": "GET and POST requests used to test the Vedika Astrology API sandbox before building the Cosmic Daily website. No API key required — sandbox mode.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.vedika.io/sandbox" }
+  ],
+  "item": [
+    {
+      "name": "GET Daily Horoscope",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/daily/horoscope/leo",
+          "host": ["{{baseUrl}}"],
+          "path": ["daily", "horoscope", "leo"]
+        },
+        "description": "Returns today's mock horoscope reading for the given zodiac sign (prediction, rating, lucky number/color/time, moon phase)."
+      },
+      "response": []
+    },
+    {
+      "name": "POST Birth Chart",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"datetime\": \"1990-06-15T14:30:00\",\n  \"latitude\": 14.5995,\n  \"longitude\": 120.9842,\n  \"timezone\": \"+08:00\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/astrology/birth-chart",
+          "host": ["{{baseUrl}}"],
+          "path": ["astrology", "birth-chart"]
+        },
+        "description": "Creates a mock birth chart (ascendant sign, nakshatra, traits, SVG chart) from the given birth date/time and coordinates."
+      },
+      "response": []
+    }
+  ]
+}

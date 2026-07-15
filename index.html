@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Responsive: works on phone and desktop -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cosmic Daily ✨ Horoscope, Birth Chart & Freedom Wall</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ============ HEADER ============ -->
+  <header class="site-header">
+    <h1 class="logo">✨ Cosmic&nbsp;Daily</h1>
+    <p class="tagline">Your daily horoscope, your birth chart, and a wall for your thoughts.</p>
+    <p id="todayDate" class="today-date"><!-- JS fills in today's date here --></p>
+  </header>
+
+  <main class="container">
+
+    <!-- ============ SECTION 1: DAILY HOROSCOPE (Vedika API, GET) ============ -->
+    <section class="card section" id="horoscopeSection">
+      <h2 class="section-title">🔮 Daily Horoscope</h2>
+      <p class="section-sub">Pick your zodiac sign to see today's reading.</p>
+
+      <!-- Grid of 12 zodiac signs. JS builds the buttons here. -->
+      <div id="zodiacGrid" class="zodiac-grid" role="list" aria-label="Zodiac signs"></div>
+
+      <!-- The selected sign's reading appears here -->
+      <div id="horoscopeResult" class="result" aria-live="polite">
+        <p class="placeholder">👆 Pick a sign above.</p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2: BIRTH CHART (Vedika API, POST) ============ -->
+    <section class="card section" id="chartSection">
+      <h2 class="section-title">🪐 Your Birth Chart</h2>
+      <p class="section-sub">Enter your birth date, time, and city to see your ascendant, nakshatra, and astrology chart.</p>
+
+      <!-- Form for birth details. -->
+      <form id="chartForm" class="sky-form">
+        <input
+          type="date"
+          id="chartDate"
+          class="city-input"
+          aria-label="Birth date"
+          required
+        />
+        <input
+          type="time"
+          id="chartTime"
+          class="city-input"
+          aria-label="Birth time"
+        />
+        <select id="chartCity" class="city-input" aria-label="Birth city"></select>
+        <button type="submit" class="btn btn-gold">Generate</button>
+      </form>
+
+      <!-- The birth chart appears here -->
+      <div id="chartResult" class="result" aria-live="polite">
+        <p class="placeholder">🪐 Fill out the form above to see your chart.</p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 3: FREEDOM WALL (localStorage) ============ -->
+    <section class="card section" id="wallSection">
+      <h2 class="section-title">📝 Freedom Wall</h2>
+      <p class="section-sub">Post an anonymous thought. Saved in your browser (localStorage).</p>
+
+      <!-- Form for posting -->
+      <form id="wallForm" class="wall-form">
+        <input
+          type="text"
+          id="wallName"
+          class="wall-name"
+          placeholder="Name/alias (optional)"
+          maxlength="20"
+          aria-label="Alias"
+          autocomplete="off"
+        />
+        <select id="wallMood" class="wall-mood" aria-label="Mood">
+          <option value="">Mood (optional)</option>
+          <option value="😊">😊 Happy</option>
+          <option value="😢">😢 Sad</option>
+          <option value="😌">😌 Calm</option>
+          <option value="🔥">🔥 Motivated</option>
+          <option value="😴">😴 Tired</option>
+          <option value="💜">💜 Grateful</option>
+        </select>
+        <textarea
+          id="wallMessage"
+          class="wall-message"
+          placeholder="Write your message here... (max 200)"
+          maxlength="200"
+          rows="3"
+          aria-label="Message"
+          required
+        ></textarea>
+        <div class="wall-form-footer">
+          <span id="charCount" class="char-count">0 / 200</span>
+          <button type="submit" class="btn btn-purple">Post</button>
+        </div>
+      </form>
+
+      <!-- List of posts -->
+      <div id="wallList" class="wall-list" aria-live="polite"></div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <p>Built with 💜 for our API Group Exercise.</p>
+    <p class="credits">
+      API: <a href="https://vedika.io" target="_blank" rel="noopener">Vedika Astrology API</a> (sandbox mode).
+      Freedom Wall data stored locally in your browser.
+    </p>
+  </footer>
+
+  <!-- Single JS file, deferred so the HTML loads first -->
+  <script src="app.js" defer></script>
+</body>
+</html>
