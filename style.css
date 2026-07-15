@@ -245,7 +245,7 @@ body::before {
 
 /* ---------- Freedom Wall ---------- */
 .wall-form { display: flex; flex-direction: column; gap: 0.6rem; }
-.wall-name, .wall-mood, .wall-message {
+.wall-mood, .wall-message {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -255,40 +255,187 @@ body::before {
   font-family: inherit;
 }
 .wall-message { resize: vertical; }
-.wall-name:focus, .wall-mood:focus, .wall-message:focus { outline: 2px solid var(--purple); border-color: var(--purple); }
+.wall-mood:focus, .wall-message:focus { outline: 2px solid var(--purple); border-color: var(--purple); }
 .wall-form-footer { display: flex; align-items: center; justify-content: space-between; }
 .char-count { color: var(--text-dim); font-size: 0.8rem; }
 
-.wall-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.9rem;
-  margin-top: 1.3rem;
-}
-.wall-post {
-  background: linear-gradient(160deg, #f4fafe, #e6f3fb);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem;
+/* Clear-sky stage where released thoughts rise and fade away.
+   Nothing here is ever saved — purely a release animation. */
+.sky-stage {
   position: relative;
-  animation: fadeIn 0.3s ease;
+  overflow: hidden;
+  min-height: 150px;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  background:
+    radial-gradient(60px 26px at 18% 30%, rgba(255, 255, 255, 0.9) 45%, transparent 47%),
+    radial-gradient(50px 22px at 68% 55%, rgba(255, 255, 255, 0.85) 45%, transparent 47%),
+    radial-gradient(40px 18px at 40% 78%, rgba(255, 255, 255, 0.8) 45%, transparent 47%),
+    linear-gradient(180deg, #bfe2f7, #eaf5fc);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
 }
-.wall-post .post-mood { font-size: 1.4rem; }
-.wall-post .post-body { margin: 0.4rem 0; word-wrap: break-word; overflow-wrap: break-word; }
-.wall-post .post-meta { color: var(--text-dim); font-size: 0.75rem; display: flex; justify-content: space-between; align-items: center; }
-.wall-post .post-author { color: var(--purple-dk); font-weight: 600; }
-.post-delete {
+.sky-hint {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 0.88rem;
+  margin: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* A released thought: rises from the bottom of the sky stage and fades away. */
+.thought-orb {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  max-width: 85%;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--mood-color, var(--gold));
+  box-shadow: 0 4px 14px rgba(20, 86, 132, 0.18), 0 0 14px var(--mood-color, var(--gold));
+  animation: riseAndFade 2.8s ease-out forwards;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+@keyframes riseAndFade {
+  0%   { transform: translateX(-50%) translateY(0) scale(0.9); opacity: 0; }
+  12%  { opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-130px) scale(0.85); opacity: 0; }
+}
+
+/* Tally of released thoughts — resets each visit, since nothing is stored. */
+.release-count {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin: -0.4rem 0 0.9rem;
+}
+
+/* "View Sky" / "Universe Reply" — browse released thoughts and their replies */
+.sky-actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
+.view-sky-btn { flex: 1; }
+
+/* Full-screen sky window that both features open into */
+.sky-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow-y: auto;
+  padding: 2rem 1.2rem 3rem;
+  background:
+    radial-gradient(130px 60px at 12% 15%, rgba(255, 255, 255, 0.9) 45%, transparent 47%),
+    radial-gradient(160px 75px at 78% 10%, rgba(255, 255, 255, 0.85) 45%, transparent 47%),
+    radial-gradient(110px 55px at 45% 32%, rgba(255, 255, 255, 0.8) 45%, transparent 47%),
+    radial-gradient(140px 65px at 85% 55%, rgba(255, 255, 255, 0.85) 45%, transparent 47%),
+    radial-gradient(100px 50px at 18% 60%, rgba(255, 255, 255, 0.75) 45%, transparent 47%),
+    radial-gradient(120px 58px at 55% 82%, rgba(255, 255, 255, 0.8) 45%, transparent 47%),
+    linear-gradient(180deg, #6bb8e8 0%, #a9d8f2 35%, #eaf5fc 100%);
+}
+.sky-modal-inner { max-width: 780px; margin: 0 auto; }
+.sky-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.4rem;
+}
+.sky-modal-title {
+  margin: 0;
+  color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.4rem, 4vw, 1.9rem);
+  text-shadow: 0 2px 12px rgba(20, 86, 132, 0.35);
+}
+.sky-modal-close {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+  transition: transform 0.15s, background 0.15s;
+}
+.sky-modal-close:hover { background: #fff; transform: scale(1.06); }
+.sky-modal-body { padding-bottom: 1rem; }
+.sky-modal-body .placeholder,
+.sky-modal-body .loading { color: #fff; text-shadow: 0 1px 6px rgba(20, 86, 132, 0.3); }
+.sky-modal-body .spinner { border-color: rgba(255, 255, 255, 0.4); border-top-color: #fff; }
+
+.sky-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  justify-content: center;
+}
+.cloud-bubble {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--mood-color, var(--gold));
+  box-shadow: 0 4px 12px rgba(20, 86, 132, 0.12);
+  border-radius: 14px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  max-width: 260px;
+  flex: 1 1 220px;
+}
+.cloud-text { margin: 0 0 0.5rem; word-wrap: break-word; overflow-wrap: break-word; }
+
+.reply-toggle {
   background: transparent;
   border: none;
-  color: var(--text-dim);
+  color: var(--purple);
+  font-weight: 600;
+  font-size: 0.78rem;
   cursor: pointer;
-  font-size: 1rem;
-  padding: 2px 6px;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
+  padding: 0.2rem 0;
 }
-.post-delete:hover { color: #e05a5a; background: rgba(224, 90, 90, 0.1); }
-.wall-empty { color: var(--text-dim); text-align: center; font-style: italic; grid-column: 1 / -1; }
+.reply-toggle:hover { text-decoration: underline; }
+
+.reply-panel {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+}
+.reply-list { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+.reply-item {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  background: var(--bg-input);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.reply-empty { margin: 0; font-size: 0.78rem; color: var(--text-dim); font-style: italic; }
+
+.reply-form { display: flex; gap: 0.4rem; }
+.reply-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.78rem;
+  font-family: inherit;
+}
+.reply-input:focus { outline: 2px solid var(--purple); border-color: var(--purple); }
+.reply-submit { padding: 0.4rem 0.8rem; font-size: 0.78rem; }
+.reply-error { margin: 0.4rem 0 0; font-size: 0.75rem; color: #b23a3a; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -342,5 +489,4 @@ body::before {
 /* ---------- Small screens (phone) ---------- */
 @media (max-width: 480px) {
   .card { padding: 1.2rem; }
-  .wall-list { grid-template-columns: 1fr; }
 }

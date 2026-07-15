@@ -62,22 +62,19 @@
       </div>
     </section>
 
-    <!-- ============ SECTION 3: FREEDOM WALL (localStorage) ============ -->
+    <!-- ============ SECTION 3: FREEDOM WALL (release into the sky — anonymous & shared) ============ -->
     <section class="card section" id="wallSection">
-      <h2 class="section-title">📝 Freedom Wall</h2>
-      <p class="section-sub">Post an anonymous thought. Saved in your browser (localStorage).</p>
+      <h2 class="section-title">🌌 Freedom Wall</h2>
+      <p class="section-sub">Write what's on your mind, then let it go. Fully anonymous — no name is ever attached to what you write.</p>
 
-      <!-- Form for posting -->
+      <!-- Sky stage where released thoughts rise and fade away -->
+      <div id="skyStage" class="sky-stage" aria-live="polite">
+        <p id="skyHint" class="sky-hint">Press Enter (or click Release) to send your thought into the sky.</p>
+      </div>
+      <p id="releaseCount" class="release-count"></p>
+
+      <!-- Form for writing a thought -->
       <form id="wallForm" class="wall-form">
-        <input
-          type="text"
-          id="wallName"
-          class="wall-name"
-          placeholder="Name/alias (optional)"
-          maxlength="20"
-          aria-label="Alias"
-          autocomplete="off"
-        />
         <select id="wallMood" class="wall-mood" aria-label="Mood">
           <option value="">Mood (optional)</option>
           <option value="😊">😊 Happy</option>
@@ -90,29 +87,43 @@
         <textarea
           id="wallMessage"
           class="wall-message"
-          placeholder="Write your message here... (max 200)"
+          placeholder="What's on your mind? (max 200) — Enter to release, Shift+Enter for a new line"
           maxlength="200"
           rows="3"
-          aria-label="Message"
+          aria-label="Your thought"
           required
         ></textarea>
         <div class="wall-form-footer">
           <span id="charCount" class="char-count">0 / 200</span>
-          <button type="submit" class="btn btn-purple">Post</button>
+          <button type="submit" class="btn btn-purple">Release ✨</button>
         </div>
       </form>
 
-      <!-- List of posts -->
-      <div id="wallList" class="wall-list" aria-live="polite"></div>
+      <!-- Toggle to browse everyone else's released thoughts, and reply to them -->
+      <div class="sky-actions">
+        <button type="button" id="viewSkyBtn" class="btn btn-gold view-sky-btn">🔭 View Sky</button>
+        <button type="button" id="universeReplyBtn" class="btn btn-gold view-sky-btn">💬 Universe Reply</button>
+      </div>
     </section>
 
   </main>
+
+  <!-- Full-screen sky window, shared by "View Sky" and "Universe Reply" -->
+  <div id="skyModal" class="sky-modal" hidden>
+    <div class="sky-modal-inner">
+      <div class="sky-modal-header">
+        <h3 id="skyModalTitle" class="sky-modal-title"></h3>
+        <button type="button" id="skyModalClose" class="sky-modal-close" aria-label="Close">✕</button>
+      </div>
+      <div id="skyModalBody" class="sky-modal-body" aria-live="polite"></div>
+    </div>
+  </div>
 
   <footer class="site-footer">
     <p>Built with 💜 for our API Group Exercise.</p>
     <p class="credits">
       API: <a href="https://vedika.io" target="_blank" rel="noopener">Vedika Astrology API</a> (sandbox mode).
-      Freedom Wall data stored locally in your browser.
+      Freedom Wall thoughts are never saved anywhere.
     </p>
   </footer>
 

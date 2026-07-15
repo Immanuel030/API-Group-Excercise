@@ -5,7 +5,7 @@
      1) CONFIG           -> Vedika Astrology API (sandbox)
      2) DAILY HOROSCOPE  -> GET  /sandbox/daily/horoscope/{sign}
      3) BIRTH CHART      -> POST /sandbox/astrology/birth-chart
-     4) FREEDOM WALL     -> localStorage (bonus feature, no external API)
+     4) FREEDOM WALL     -> release animation, nothing saved (bonus feature)
    Each section is commented to keep the logic clear.
    ========================================================= */
 
@@ -27,6 +27,12 @@
 const CONFIG = {
   VEDIKA_BASE: "https://api.vedika.io/sandbox",
   VEDIKA_KEY: "", // optional — Bearer token if you have a real account
+
+  // JSONBin.io — powers the shared "View Sky" feature on the Freedom Wall.
+  // Free, requires signup for a Master Key. See README.md for setup steps.
+  JSONBIN_BASE: "https://api.jsonbin.io/v3",
+  JSONBIN_MASTER_KEY: "$2a$10$2oVOeyKvv9c/QT98lLDtV.DhbS0WhklivTaBN7XJfYHF.7OXTUCB.",
+  JSONBIN_COLLECTION_ID: "6a56fc7bda38895dfe5f0937",
 };
 
 /* Zodiac data — symbol, name, and date range for each sign.
@@ -295,39 +301,111 @@ function renderBirthChart(data, city) {
 }
 
 /* =========================================================
-   4) FREEDOM WALL  (localStorage — bonus feature)
-   Posts are saved as a JSON string in the browser.
-   This is not an external API, since this project uses only
-   one required API (Vedika) per the assignment.
+   4) FREEDOM WALL  (release into the sky — shared, anonymous)
+   -------------------------------------------------
+   Fully anonymous by design: there is no name field anywhere,
+   on either a thought or a reply. Pressing Enter (or Release)
+   animates the thought rising out of view locally AND saves it
+   (text + mood only, never a name) to a shared JSONBin.io
+   collection, so anyone who opens "View Sky" can see — and
+   anonymously reply to — what others have released.
+
+     RELEASE (write)     -> POST /v3/b            (tagged to a collection)
+     REPLY   (write)     -> POST /v3/b            (same collection, has parentId)
+     VIEW SKY (read)     -> GET  /v3/c/{id}/bins   then GET each bin's content
+     UNIVERSE REPLY      -> same read, filtered to thoughts released from this browser
+
+   JSONBin's free tier allows only one collection, so thoughts and
+   replies share CONFIG.JSONBIN_COLLECTION_ID — a bin is a "reply"
+   if its content has a parentId field, a "thought" otherwise.
+
+   "Universe Reply" needs to know which thoughts are "yours" after
+   a reload, so (with the user's OK) we keep a small local list of
+   your own released thought IDs/text in localStorage — this is the
+   ONLY thing saved locally, and it never leaves your browser.
+
+   Requires JSONBIN_MASTER_KEY + JSONBIN_COLLECTION_ID in CONFIG
+   (see README.md for setup). Note: since this is a static,
+   client-only site, the key necessarily ships inside app.js and
+   is visible to anyone who views the page source — fine for a
+   class demo, but don't reuse this key for anything sensitive.
    ========================================================= */
 
-const WALL_KEY = "cosmicDaily_wallPosts";
+/* Glow color per mood, used to tint thought bubbles. */
+const MOOD_COLORS = {
+  "😊": "#e6c860", // happy   -> gold
+  "😢": "#7ea8ff", // sad     -> blue
+  "😌": "#7fe0c4", // calm    -> teal
+  "🔥": "#ff8a5b", // motivated -> orange
+  "😴": "#a99bd8", // tired   -> muted lavender
+  "💜": "#b48bff", // grateful -> violet
+  "":   "#e6c860", // no mood chosen -> default gold
+};
 
-function loadPosts() {
+/* A modest blocklist (English + Tagalog) so replies can be checked
+   for obviously unkind language before they're posted. This runs
+   entirely in the browser, so it's a courtesy nudge, not a hard
+   guarantee — someone determined to bypass it still could. */
+const BAD_WORDS = [
+  "fuck", "shit", "bitch", "asshole", "bastard", "dick", "cunt", "whore", "slut", "nigger", "faggot",
+  "putangina", "putang ina", "gago", "gagi", "tangina", "tanga ka", "bobo", "ulol", "tarantado",
+  "hayop ka", "leche", "punyeta", "kupal", "peste", "hinayupak", "pakshet", "pakyu",
+];
+
+function containsBadWords(text) {
+  const lower = text.toLowerCase();
+  return BAD_WORDS.some((w) => new RegExp(`\\b${w.replace(/\s+/g, "\\s+")}\\b`, "i").test(lower));
+}
+
+let releasedThisSession = 0; // in-memory tally only
+
+/* ---------- Local "my thoughts" tracking (opt-in, browser-only) ---------- */
+const MY_THOUGHTS_KEY = "cosmicDaily_myThoughts";
+
+function getMyThoughtIds() {
   try {
-    return JSON.parse(localStorage.getItem(WALL_KEY)) || [];
-  } catch (err) {
-    console.error("Cannot read wall posts:", err);
+    return JSON.parse(localStorage.getItem(MY_THOUGHTS_KEY)) || [];
+  } catch {
     return [];
   }
 }
 
-function savePosts(posts) {
+function rememberMyThought(id, text, mood) {
   try {
-    localStorage.setItem(WALL_KEY, JSON.stringify(posts));
+    const mine = getMyThoughtIds();
+    mine.unshift({ id, text, mood, releasedAt: new Date().toISOString() });
+    localStorage.setItem(MY_THOUGHTS_KEY, JSON.stringify(mine.slice(0, 50)));
   } catch (err) {
-    console.error("Cannot save wall posts:", err);
-    alert("Couldn't save the post — the browser's storage might be full.");
+    console.error("Could not remember this thought locally:", err);
   }
+}
+
+function isWallConfigured() {
+  return (
+    CONFIG.JSONBIN_MASTER_KEY &&
+    CONFIG.JSONBIN_MASTER_KEY !== "YOUR_JSONBIN_MASTER_KEY_HERE" &&
+    CONFIG.JSONBIN_COLLECTION_ID &&
+    CONFIG.JSONBIN_COLLECTION_ID !== "YOUR_JSONBIN_COLLECTION_ID_HERE"
+  );
 }
 
 function setupWallForm() {
   const form = document.getElementById("wallForm");
   const message = document.getElementById("wallMessage");
   const counter = document.getElementById("charCount");
+  const viewSkyBtn = document.getElementById("viewSkyBtn");
+  const universeReplyBtn = document.getElementById("universeReplyBtn");
 
   message.addEventListener("input", () => {
     counter.textContent = `${message.value.length} / 200`;
+  });
+
+  // Enter releases the thought; Shift+Enter still allows a new line.
+  message.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
   });
 
   form.addEventListener("submit", (e) => {
@@ -336,55 +414,267 @@ function setupWallForm() {
     const text = message.value.trim();
     if (!text) return;
 
-    const post = {
-      id: Date.now(),
-      name: document.getElementById("wallName").value.trim() || "Anonymous",
-      mood: document.getElementById("wallMood").value,
-      text: text,
-      date: new Date().toLocaleString("en-US", {
-        month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-      }),
-    };
-
-    const posts = loadPosts();
-    posts.unshift(post);
-    savePosts(posts);
-    renderPosts();
+    const mood = document.getElementById("wallMood").value;
+    releaseThought(text, mood);
 
     form.reset();
     counter.textContent = "0 / 200";
+    message.focus();
+  });
+
+  viewSkyBtn.addEventListener("click", () => openSkyModal({ onlyMine: false, title: "🔭 View Sky" }));
+  universeReplyBtn.addEventListener("click", () => openSkyModal({ onlyMine: true, title: "💬 Universe Reply" }));
+
+  // Closing the sky modal: the ✕ button, clicking the sky itself
+  // (outside the content column), or pressing Escape.
+  const modal = document.getElementById("skyModal");
+  document.getElementById("skyModalClose").addEventListener("click", closeSkyModal);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeSkyModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.hidden) closeSkyModal();
   });
 }
 
-function deletePost(id) {
-  if (!confirm("Delete this post?")) return;
-  const posts = loadPosts().filter((p) => p.id !== id);
-  savePosts(posts);
-  renderPosts();
+function closeSkyModal() {
+  document.getElementById("skyModal").hidden = true;
+  document.body.style.overflow = "";
 }
 
-function renderPosts() {
-  const list = document.getElementById("wallList");
-  const posts = loadPosts();
+/* Animate a thought rising out of view locally, and (if configured)
+   save it — anonymously, text + mood only — to the shared sky. */
+function releaseThought(text, mood) {
+  const stage = document.getElementById("skyStage");
+  const hint = document.getElementById("skyHint");
+  const color = MOOD_COLORS[mood] || MOOD_COLORS[""];
 
-  if (posts.length === 0) {
-    list.innerHTML = `<p class="wall-empty">No posts yet. Be the first! ✍️</p>`;
+  const orb = document.createElement("div");
+  orb.className = "thought-orb";
+  orb.style.setProperty("--mood-color", color);
+  orb.textContent = mood ? `${mood} ${text}` : text;
+
+  // Clean up the element once its rise-and-fade animation finishes.
+  orb.addEventListener("animationend", () => orb.remove());
+
+  stage.appendChild(orb);
+
+  // Briefly swap the hint for a gentle confirmation, then restore it.
+  hint.textContent = "Released into the sky. ☁️✨";
+  setTimeout(() => {
+    hint.textContent = "Press Enter (or click Release) to send your thought into the sky.";
+  }, 2200);
+
+  releasedThisSession += 1;
+  const countEl = document.getElementById("releaseCount");
+  countEl.textContent = releasedThisSession === 1
+    ? "1 thought released"
+    : `${releasedThisSession} thoughts released`;
+
+  if (isWallConfigured()) {
+    saveToSharedSky(text, mood)
+      .then((id) => rememberMyThought(id, text, mood))
+      .catch((err) => {
+        // The local animation already played, so this failing shouldn't
+        // interrupt the user — just log it for debugging.
+        console.error("Could not save thought to the shared sky:", err);
+      });
+  }
+}
+
+/* POST the released thought (anonymous: text + mood only) to JSONBin,
+   tagged into our shared collection. Returns the new bin's ID. */
+async function saveToSharedSky(text, mood) {
+  const res = await fetch(`${CONFIG.JSONBIN_BASE}/b`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Master-Key": CONFIG.JSONBIN_MASTER_KEY,
+      "X-Collection-Id": CONFIG.JSONBIN_COLLECTION_ID,
+    },
+    body: JSON.stringify({ text, mood, releasedAt: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`Save failed: status ${res.status}`);
+  const json = await res.json();
+  return json.metadata.id;
+}
+
+/* POST an anonymous reply to a thought, tagged with parentId so it can
+   be matched back to the thought it belongs to. */
+async function postReply(parentId, text) {
+  const res = await fetch(`${CONFIG.JSONBIN_BASE}/b`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Master-Key": CONFIG.JSONBIN_MASTER_KEY,
+      "X-Collection-Id": CONFIG.JSONBIN_COLLECTION_ID,
+    },
+    body: JSON.stringify({ parentId, text, createdAt: new Date().toISOString() }),
+  });
+  if (!res.ok) throw new Error(`Reply failed: status ${res.status}`);
+}
+
+/* Fetch the latest bins in the shared collection and split them into
+   thoughts (no parentId) and replies grouped by the thought they
+   belong to (has parentId). Shared by View Sky and Universe Reply. */
+async function fetchSkyBatch(limit = 50) {
+  const listRes = await fetch(
+    `${CONFIG.JSONBIN_BASE}/c/${CONFIG.JSONBIN_COLLECTION_ID}/bins`,
+    { headers: { "X-Master-Key": CONFIG.JSONBIN_MASTER_KEY } }
+  );
+  if (!listRes.ok) throw new Error(`List failed: status ${listRes.status}`);
+  const meta = await listRes.json();
+
+  const latest = [...meta]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit);
+
+  const bins = (await Promise.all(
+    latest.map(async (m) => {
+      try {
+        const res = await fetch(
+          `${CONFIG.JSONBIN_BASE}/b/${m.record}/latest?meta=false`,
+          { headers: { "X-Master-Key": CONFIG.JSONBIN_MASTER_KEY } }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        return { ...data, id: m.record };
+      } catch {
+        return null; // skip a single bad bin rather than fail the whole batch
+      }
+    })
+  )).filter(Boolean);
+
+  const thoughts = bins.filter((b) => !b.parentId);
+  const commentsByParent = new Map();
+  bins
+    .filter((b) => b.parentId)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .forEach((c) => {
+      if (!commentsByParent.has(c.parentId)) commentsByParent.set(c.parentId, []);
+      commentsByParent.get(c.parentId).push(c);
+    });
+
+  return { thoughts, commentsByParent };
+}
+
+/* Open the full-screen sky window and load either "View Sky" (everyone's
+   thoughts) or "Universe Reply" (only thoughts released from this browser). */
+async function openSkyModal({ onlyMine, title }) {
+  const modal = document.getElementById("skyModal");
+  const body = document.getElementById("skyModalBody");
+  document.getElementById("skyModalTitle").textContent = title;
+  modal.hidden = false;
+  document.body.style.overflow = "hidden"; // lock background scroll while open
+
+  if (!isWallConfigured()) {
+    body.innerHTML = `
+      <div class="error-box">
+        🔑 The shared sky isn't set up yet. See README.md to configure
+        <code>JSONBIN_MASTER_KEY</code> and <code>JSONBIN_COLLECTION_ID</code>.
+      </div>`;
     return;
   }
 
-  list.innerHTML = posts.map((p) => `
-    <div class="wall-post">
-      <div class="post-meta">
-        <span class="post-author">${p.mood ? `<span class="post-mood">${escapeHtml(p.mood)}</span> ` : ""}${escapeHtml(p.name)}</span>
-        <button class="post-delete" data-id="${p.id}" title="Delete" aria-label="Delete post">🗑️</button>
-      </div>
-      <p class="post-body">${escapeHtml(p.text)}</p>
-      <div class="post-meta"><span></span><span>${escapeHtml(p.date)}</span></div>
-    </div>
-  `).join("");
+  body.innerHTML = `<div class="loading"><div class="spinner"></div>${onlyMine ? "Looking for your replies..." : "Looking up at the sky..."}</div>`;
 
-  list.querySelectorAll(".post-delete").forEach((btn) => {
-    btn.addEventListener("click", () => deletePost(Number(btn.dataset.id)));
+  try {
+    const { thoughts, commentsByParent } = await fetchSkyBatch();
+
+    let list = thoughts;
+    if (onlyMine) {
+      const myIds = new Set(getMyThoughtIds().map((t) => t.id));
+      list = thoughts.filter((t) => myIds.has(t.id));
+    }
+
+    renderSky(body, list, commentsByParent, { emptyMessage: onlyMine
+      ? "You haven't released anything from this browser yet — or your posts haven't received replies. Nothing to show here yet."
+      : "The sky is empty right now. Be the first to release a thought! ☁️" });
+  } catch (err) {
+    console.error("Open sky modal error:", err);
+    body.innerHTML = `
+      <div class="error-box">
+        😕 Couldn't load the sky right now. Please check your internet connection and try again.
+      </div>`;
+  }
+}
+
+function renderSky(panel, thoughts, commentsByParent, { emptyMessage }) {
+  if (thoughts.length === 0) {
+    panel.innerHTML = `<p class="placeholder">${emptyMessage}</p>`;
+    return;
+  }
+
+  panel.innerHTML = `<div class="sky-cloud">${thoughts.map((t) => {
+    const color = MOOD_COLORS[t.mood] || MOOD_COLORS[""];
+    const label = t.mood ? `${t.mood} ${escapeHtml(t.text)}` : escapeHtml(t.text);
+    const replies = commentsByParent.get(t.id) || [];
+
+    return `
+      <div class="cloud-bubble" style="--mood-color:${color}">
+        <p class="cloud-text">${label}</p>
+        <button type="button" class="reply-toggle" data-id="${t.id}">💬 ${replies.length ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "Reply"}</button>
+
+        <div class="reply-panel" data-panel-for="${t.id}" hidden>
+          <div class="reply-list">
+            ${replies.length
+              ? replies.map((r) => `<p class="reply-item">💭 ${escapeHtml(r.text)}</p>`).join("")
+              : `<p class="reply-empty">No replies yet.</p>`}
+          </div>
+          <form class="reply-form" data-parent="${t.id}">
+            <input type="text" class="reply-input" maxlength="150" placeholder="Write an anonymous reply..." aria-label="Reply" required />
+            <button type="submit" class="btn btn-purple reply-submit">Send</button>
+          </form>
+          <p class="reply-error" hidden></p>
+        </div>
+      </div>`;
+  }).join("")}</div>`;
+
+  wireReplyInteractions(panel);
+}
+
+/* Expand/collapse reply panels and handle reply-form submissions
+   for whichever sky panel (View Sky or Universe Reply) is showing. */
+function wireReplyInteractions(panel) {
+  panel.querySelectorAll(".reply-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = panel.querySelector(`.reply-panel[data-panel-for="${btn.dataset.id}"]`);
+      target.hidden = !target.hidden;
+    });
+  });
+
+  panel.querySelectorAll(".reply-form").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = form.querySelector(".reply-input");
+      const errorEl = form.nextElementSibling; // .reply-error
+      const text = input.value.trim();
+      if (!text) return;
+
+      if (containsBadWords(text)) {
+        errorEl.hidden = false;
+        errorEl.textContent = "🚫 Let's keep replies kind — please rephrase your comment.";
+        return;
+      }
+      errorEl.hidden = true;
+
+      const submitBtn = form.querySelector(".reply-submit");
+      submitBtn.disabled = true;
+      try {
+        await postReply(form.dataset.parent, text);
+        input.value = "";
+        const list = form.previousElementSibling; // .reply-list
+        const empty = list.querySelector(".reply-empty");
+        if (empty) empty.remove();
+        list.insertAdjacentHTML("beforeend", `<p class="reply-item">💭 ${escapeHtml(text)}</p>`);
+      } catch (err) {
+        console.error("Post reply error:", err);
+        errorEl.hidden = false;
+        errorEl.textContent = "😕 Couldn't send your reply. Please try again.";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
   });
 }
 
@@ -395,8 +685,7 @@ function init() {
   showTodayDate();
   buildZodiacGrid();   // Daily Horoscope UI (GET)
   setupChartForm();    // Birth Chart UI (POST)
-  setupWallForm();     // Freedom Wall UI (localStorage)
-  renderPosts();
+  setupWallForm();     // Freedom Wall UI (release into the sky)
 }
 
 document.addEventListener("DOMContentLoaded", init);

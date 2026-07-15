@@ -1,46 +1,156 @@
 {
   "info": {
-    "name": "Cosmic Daily — Vedika Astrology API (Sandbox)",
-    "description": "GET and POST requests used to test the Vedika Astrology API sandbox before building the Cosmic Daily website. No API key required — sandbox mode.",
+    "name": "Cosmic Daily — API Requests",
+    "description": "GET and POST requests used to test the APIs before building the Cosmic Daily website: Vedika Astrology API (sandbox, no key) and JSONBin.io (shared Freedom Wall, requires a Master Key + Collection ID).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://api.vedika.io/sandbox" }
+    { "key": "vedikaBaseUrl", "value": "https://api.vedika.io/sandbox" },
+    { "key": "jsonbinBaseUrl", "value": "https://api.jsonbin.io/v3" },
+    { "key": "jsonbinMasterKey", "value": "YOUR_JSONBIN_MASTER_KEY_HERE" },
+    { "key": "jsonbinCollectionId", "value": "YOUR_JSONBIN_COLLECTION_ID_HERE" },
+    { "key": "jsonbinBinId", "value": "PASTE_A_BIN_ID_HERE_AFTER_RUNNING_RELEASE" }
   ],
   "item": [
     {
-      "name": "GET Daily Horoscope",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/daily/horoscope/leo",
-          "host": ["{{baseUrl}}"],
-          "path": ["daily", "horoscope", "leo"]
+      "name": "Vedika Astrology API (sandbox)",
+      "item": [
+        {
+          "name": "GET Daily Horoscope",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{vedikaBaseUrl}}/daily/horoscope/leo",
+              "host": ["{{vedikaBaseUrl}}"],
+              "path": ["daily", "horoscope", "leo"]
+            },
+            "description": "Returns today's mock horoscope reading for the given zodiac sign (prediction, rating, lucky number/color/time, moon phase)."
+          },
+          "response": []
         },
-        "description": "Returns today's mock horoscope reading for the given zodiac sign (prediction, rating, lucky number/color/time, moon phase)."
-      },
-      "response": []
+        {
+          "name": "POST Birth Chart",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"datetime\": \"1990-06-15T14:30:00\",\n  \"latitude\": 14.5995,\n  \"longitude\": 120.9842,\n  \"timezone\": \"+08:00\"\n}"
+            },
+            "url": {
+              "raw": "{{vedikaBaseUrl}}/astrology/birth-chart",
+              "host": ["{{vedikaBaseUrl}}"],
+              "path": ["astrology", "birth-chart"]
+            },
+            "description": "Creates a mock birth chart (ascendant sign, nakshatra, traits, SVG chart) from the given birth date/time and coordinates."
+          },
+          "response": []
+        }
+      ]
     },
     {
-      "name": "POST Birth Chart",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"datetime\": \"1990-06-15T14:30:00\",\n  \"latitude\": 14.5995,\n  \"longitude\": 120.9842,\n  \"timezone\": \"+08:00\"\n}"
+      "name": "JSONBin.io (Freedom Wall)",
+      "item": [
+        {
+          "name": "POST Create Collection (one-time setup)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Master-Key", "value": "{{jsonbinMasterKey}}" },
+              { "key": "X-Collection-Name", "value": "cosmic-daily-freedom-wall" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": {
+              "raw": "{{jsonbinBaseUrl}}/c",
+              "host": ["{{jsonbinBaseUrl}}"],
+              "path": ["c"]
+            },
+            "description": "Run this once to create the shared collection. Copy the response's \"record\" field into the jsonbinCollectionId variable (and into CONFIG.JSONBIN_COLLECTION_ID in app.js)."
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{baseUrl}}/astrology/birth-chart",
-          "host": ["{{baseUrl}}"],
-          "path": ["astrology", "birth-chart"]
+        {
+          "name": "POST Release Thought",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Master-Key", "value": "{{jsonbinMasterKey}}" },
+              { "key": "X-Collection-Id", "value": "{{jsonbinCollectionId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Testing the freedom wall from Postman!\",\n  \"mood\": \"😊\",\n  \"releasedAt\": \"2026-07-15T10:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{jsonbinBaseUrl}}/b",
+              "host": ["{{jsonbinBaseUrl}}"],
+              "path": ["b"]
+            },
+            "description": "Creates one bin (= one anonymous released thought) tagged into the shared collection. No name field is ever sent."
+          },
+          "response": []
         },
-        "description": "Creates a mock birth chart (ascendant sign, nakshatra, traits, SVG chart) from the given birth date/time and coordinates."
-      },
-      "response": []
+        {
+          "name": "POST Reply to Thought",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Master-Key", "value": "{{jsonbinMasterKey}}" },
+              { "key": "X-Collection-Id", "value": "{{jsonbinCollectionId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentId\": \"{{jsonbinBinId}}\",\n  \"text\": \"Testing an anonymous reply from Postman!\",\n  \"createdAt\": \"2026-07-15T10:05:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{jsonbinBaseUrl}}/b",
+              "host": ["{{jsonbinBaseUrl}}"],
+              "path": ["b"]
+            },
+            "description": "Creates a reply bin (has a parentId, unlike a thought bin) tagged into the same shared collection. Set jsonbinBinId to an existing thought's bin ID first (from GET List Sky Bins)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET List Sky Bins",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Master-Key", "value": "{{jsonbinMasterKey}}" }
+            ],
+            "url": {
+              "raw": "{{jsonbinBaseUrl}}/c/{{jsonbinCollectionId}}/bins",
+              "host": ["{{jsonbinBaseUrl}}"],
+              "path": ["c", "{{jsonbinCollectionId}}", "bins"]
+            },
+            "description": "Lists metadata (bin IDs + timestamps) for every released thought in the collection. Copy a \"record\" value into jsonbinBinId to try the next request."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Read One Thought",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Master-Key", "value": "{{jsonbinMasterKey}}" }
+            ],
+            "url": {
+              "raw": "{{jsonbinBaseUrl}}/b/{{jsonbinBinId}}/latest?meta=false",
+              "host": ["{{jsonbinBaseUrl}}"],
+              "path": ["b", "{{jsonbinBinId}}", "latest"],
+              "query": [{ "key": "meta", "value": "false" }]
+            },
+            "description": "Fetches the actual content (text + mood + releasedAt) of one released thought by its bin ID."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }
