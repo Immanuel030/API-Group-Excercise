@@ -205,7 +205,8 @@ function buildCityOptions() {
   const select = document.getElementById("chartCity");
   if (!select) return;
 
-  select.innerHTML = CITY_PRESETS.map((c) =>
+  const sortedCities = [...CITY_PRESETS].sort((a, b) => a.name.localeCompare(b.name));
+  select.innerHTML = sortedCities.map((c) =>
     `<option value="${c.key}">${escapeHtml(c.name)}</option>`
   ).join("");
 }
