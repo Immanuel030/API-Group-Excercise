@@ -35,7 +35,7 @@
     <!-- ============ SECTION 2: BIRTH CHART (Vedika API, POST) ============ -->
     <section class="card section" id="chartSection">
       <h2 class="section-title">🪐 Your Birth Chart</h2>
-      <p class="section-sub">Enter your birth date, time, and city to see your ascendant, nakshatra, and astrology chart.</p>
+      <p class="section-sub">Enter your birth date and place to see your ascendant, nakshatra, and astrology chart.</p>
 
       <!-- Form for birth details. -->
       <form id="chartForm" class="sky-form">
@@ -46,13 +46,14 @@
           aria-label="Birth date"
           required
         />
-        <input
-          type="time"
-          id="chartTime"
+
+        <select
+          id="chartCity"
           class="city-input"
-          aria-label="Birth time"
-        />
-        <select id="chartCity" class="city-input" aria-label="Birth city"></select>
+          aria-label="Birth place"
+          required
+        ></select>
+
         <button type="submit" class="btn btn-gold">Generate</button>
       </form>
 
