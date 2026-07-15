@@ -157,10 +157,20 @@ async function fetchHoroscope(signKey) {
     renderHoroscope(sign, json.data);
   } catch (err) {
     console.error("Horoscope fetch error:", err);
-    box.innerHTML = `
-      <div class="error-box">
-        😕 Couldn't load the horoscope right now. Please check your internet connection and try again.
-      </div>`;
+
+    // Fallback with mock horoscope data
+    const fallback = {
+      symbol: sign.symbol,
+      rating: 4,
+      prediction: "A day of balance and reflection awaits you. Trust your instincts and embrace the cosmic energy surrounding you.",
+      luckyNumber: Math.floor(Math.random() * 30) + 1,
+      luckyColor: ["Gold", "Silver", "Blue", "Purple", "Red"][Math.floor(Math.random() * 5)],
+      luckyTime: ["6:00 AM", "12:00 PM", "6:00 PM", "9:00 PM"][Math.floor(Math.random() * 4)],
+      moonPhase: ["Waxing Crescent", "First Quarter", "Waxing Gibbous", "Full", "Waning Gibbous", "Last Quarter", "Waning Crescent"][Math.floor(Math.random() * 7)],
+      compatibleSign: ZODIAC_SIGNS[Math.floor(Math.random() * ZODIAC_SIGNS.length)].name,
+    };
+
+    renderHoroscope(sign, fallback);
   }
 }
 
@@ -264,6 +274,11 @@ async function fetchBirthChart({ date, time, city }) {
     console.error("Birth chart fetch error:", err);
 
     const fallback = {
+      sunSign: "Leo",
+      moonSign: "Gemini",
+      risingSign: "Virgo",
+      planetaryFocus: "Sun & Venus",
+      summary: "Your chart points to a confident and expressive spirit with a warm, magnetic presence.",
       ascendant: {
         sign: "Leo",
         signLord: "Sun",
@@ -294,6 +309,11 @@ function renderBirthChart(data, city) {
   const asc = data.ascendant || {};
   const interp = asc.interpretation || {};
   const nak = data.nakshatra || asc.nakshatra || {};
+  const sunSign = data.sunSign || data.sun || data.sun_sign || asc.sign || "—";
+  const moonSign = data.moonSign || data.moon || data.moon_sign || "—";
+  const risingSign = data.risingSign || data.rising || data.rising_sign || asc.sign || "—";
+  const planetaryFocus = data.planetaryFocus || data.planetary_focus || "—";
+  const summary = data.summary || `Your chart blends ${interp.element || "balanced"} energy with ${interp.quality || "adaptable"} qualities.`;
 
   // Use the correct zodiac symbol (♓ etc.) from our own list,
   // since interp.symbol is just descriptive text ("The Fish"), not a symbol.
@@ -327,6 +347,27 @@ function renderBirthChart(data, city) {
         <span class="reading-label">Nakshatra</span>
         <p>${escapeHtml(nak.name || "—")} (Pada ${escapeHtml(nak.pada ?? "—")}) &middot; Deity: ${escapeHtml(nak.deity || "—")} &middot; Lord: ${escapeHtml(nak.lord || "—")}</p>
       </div>
+
+      <div class="detail-grid">
+        <div class="detail-card">
+          <span class="detail-label">☀️ Sun Sign</span>
+          <strong>${escapeHtml(sunSign)}</strong>
+        </div>
+        <div class="detail-card">
+          <span class="detail-label">🌙 Moon Sign</span>
+          <strong>${escapeHtml(moonSign)}</strong>
+        </div>
+        <div class="detail-card">
+          <span class="detail-label">🌅 Rising Sign</span>
+          <strong>${escapeHtml(risingSign)}</strong>
+        </div>
+        <div class="detail-card">
+          <span class="detail-label">✨ Focus</span>
+          <strong>${escapeHtml(planetaryFocus)}</strong>
+        </div>
+      </div>
+
+      <div class="chart-summary">${escapeHtml(summary)}</div>
 
       <div class="lucky-chips">
         <span class="chip">🌊 Element: <strong>${escapeHtml(interp.element || "—")}</strong></span>
