@@ -74,15 +74,27 @@
 
       <!-- Form for writing a thought -->
       <form id="wallForm" class="wall-form">
-        <select id="wallMood" class="wall-mood" aria-label="Mood">
-          <option value="">Mood (optional)</option>
-          <option value="😊">😊 Happy</option>
-          <option value="😢">😢 Sad</option>
-          <option value="😌">😌 Calm</option>
-          <option value="🔥">🔥 Motivated</option>
-          <option value="😴">😴 Tired</option>
-          <option value="💜">💜 Grateful</option>
-        </select>
+        <!-- Toolbar: mood, stickers, and picture attach -->
+        <div class="wall-form-toolbar">
+          <select id="wallMood" class="wall-mood" aria-label="Mood">
+            <option value="">Mood (optional)</option>
+            <option value="😊">😊 Happy</option>
+            <option value="😢">😢 Sad</option>
+            <option value="😌">😌 Calm</option>
+            <option value="🔥">🔥 Motivated</option>
+            <option value="😴">😴 Tired</option>
+            <option value="💜">💜 Grateful</option>
+          </select>
+
+          <div class="picker-wrap">
+            <button type="button" id="stickerBtn" class="btn-icon" aria-haspopup="true" aria-expanded="false" title="Add a sticker">😀</button>
+            <div id="stickerPanel" class="sticker-panel" hidden></div>
+          </div>
+
+          <button type="button" id="imageBtn" class="btn-icon" title="Attach a picture">📷</button>
+          <input type="file" id="wallImage" accept="image/*" hidden />
+        </div>
+
         <textarea
           id="wallMessage"
           class="wall-message"
@@ -92,6 +104,10 @@
           aria-label="Your thought"
           required
         ></textarea>
+
+        <!-- Preview of an attached picture, before releasing -->
+        <div id="imagePreview" class="image-preview" hidden></div>
+
         <div class="wall-form-footer">
           <span id="charCount" class="char-count">0 / 200</span>
           <button type="submit" class="btn btn-purple">Release ✨</button>
@@ -122,7 +138,8 @@
     <p>Built with 💜 for our API Group Exercise.</p>
     <p class="credits">
       API: <a href="https://vedika.io" target="_blank" rel="noopener">Vedika Astrology API</a> (sandbox mode).
-      Freedom Wall thoughts are never saved anywhere.
+      Freedom Wall thoughts and pictures are stored anonymously (text + mood/reactions/image only — never a name)
+      in a shared JSONBin collection so others can view and reply to them.
     </p>
   </footer>
 
