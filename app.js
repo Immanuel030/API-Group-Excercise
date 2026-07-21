@@ -5,7 +5,8 @@
      1) CONFIG           -> Vedika Astrology API (sandbox)
      2) DAILY HOROSCOPE  -> GET  /sandbox/daily/horoscope/{sign}
      3) BIRTH CHART      -> POST /sandbox/astrology/birth-chart
-     4) FREEDOM WALL     -> release animation, nothing saved (bonus feature)
+     4) FREEDOM WALL     -> release animation, reactions, timestamps,
+                             stickers & pictures (shared, anonymous)
    Each section is commented to keep the logic clear.
    ========================================================= */
 
@@ -104,6 +105,29 @@ function showTodayDate() {
   el.textContent = today.toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
+}
+
+/* Turn an ISO timestamp into a short, human "time ago" label,
+   falling back to a short date once it's more than a week old.
+   Used to show when a thought/reply was posted.                    */
+function formatRelativeTime(iso) {
+  const then = new Date(iso).getTime();
+  if (!iso || Number.isNaN(then)) return "";
+
+  const diffSec = Math.round((Date.now() - then) / 1000);
+  if (diffSec < 5) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 /* Common headers for Vedika requests.
@@ -395,12 +419,13 @@ function renderBirthChart(data, city) {
    Fully anonymous by design: there is no name field anywhere,
    on either a thought or a reply. Pressing Enter (or Release)
    animates the thought rising out of view locally AND saves it
-   (text + mood only, never a name) to a shared JSONBin.io
-   collection, so anyone who opens "View Sky" can see — and
-   anonymously reply to — what others have released.
+   (text + mood + optional sticker/picture — never a name) to a
+   shared JSONBin.io collection, so anyone who opens "View Sky"
+   can see, react to, and anonymously reply to what others released.
 
      RELEASE (write)     -> POST /v3/b            (tagged to a collection)
      REPLY   (write)     -> POST /v3/b            (same collection, has parentId)
+     REACT   (write)     -> PUT  /v3/b/{id}       (updates the reactions tally)
      VIEW SKY (read)     -> GET  /v3/c/{id}/bins   then GET each bin's content
      UNIVERSE REPLY      -> same read, filtered to thoughts released from this browser
 
@@ -410,8 +435,19 @@ function renderBirthChart(data, city) {
 
    "Universe Reply" needs to know which thoughts are "yours" after
    a reload, so (with the user's OK) we keep a small local list of
-   your own released thought IDs/text in localStorage — this is the
-   ONLY thing saved locally, and it never leaves your browser.
+   your own released thought IDs/text in localStorage. We also keep
+   a small local list of which reactions YOU have tapped, so your
+   heart/emoji stays highlighted and you can't spam the same
+   reaction over and over. This is the ONLY thing saved locally —
+   it never leaves your browser.
+
+   PICTURES: since this is a lightweight, key-in-the-open static
+   site (no real file server), pictures are resized/compressed in
+   the browser to a small JPEG and stored as a base64 string right
+   alongside the text, the same way the text itself is stored. This
+   keeps things simple for a class demo, but means very large or
+   detailed photos may be rejected as "too big" — it's meant for
+   small illustrative pictures and stickers, not high-res photos.
 
    Requires JSONBIN_MASTER_KEY + JSONBIN_COLLECTION_ID in CONFIG
    (see README.md for setup). Note: since this is a static,
@@ -431,6 +467,19 @@ const MOOD_COLORS = {
   "":   "#e6c860", // no mood chosen -> default gold
 };
 
+/* Reaction emoji set. Thoughts show all of these; replies show a
+   shorter "compact" set to keep reply rows tidy.                    */
+const REACTION_EMOJIS = ["❤️", "😂", "😮", "😢", "👍"];
+
+/* Sticker set for the Freedom Wall's sticker picker — a bigger,
+   more playful set of emoji than the mood dropdown, inserted
+   straight into the message text at the cursor position.            */
+const STICKERS = [
+  "🌟", "🎉", "🌈", "🦋", "🍀", "🌻", "🐱", "🐶", "🍩", "☕",
+  "🎈", "🌙", "⭐", "💫", "🔥", "👑", "🎨", "🍕", "🏆", "✨",
+  "🌸", "🍉", "🐢", "🦄",
+];
+
 /* A modest blocklist (English + Tagalog) so replies can be checked
    for obviously unkind language before they're posted. This runs
    entirely in the browser, so it's a courtesy nudge, not a hard
@@ -447,9 +496,17 @@ function containsBadWords(text) {
 }
 
 let releasedThisSession = 0; // in-memory tally only
+let pendingImageDataUrl = null; // staged picture waiting to be released
 
-/* ---------- Local "my thoughts" tracking (opt-in, browser-only) ---------- */
+/* Local cache of the full content object for every bin currently shown
+   in the sky modal (thoughts + replies), keyed by bin id. Lets a
+   reaction click update the tally and PUT the change back without an
+   extra GET round-trip.                                              */
+const binCache = new Map();
+
+/* ---------- Local "my thoughts" / "my reactions" tracking (opt-in, browser-only) ---------- */
 const MY_THOUGHTS_KEY = "cosmicDaily_myThoughts";
+const MY_REACTIONS_KEY = "cosmicDaily_myReactions";
 
 function getMyThoughtIds() {
   try {
@@ -466,6 +523,24 @@ function rememberMyThought(id, text, mood) {
     localStorage.setItem(MY_THOUGHTS_KEY, JSON.stringify(mine.slice(0, 50)));
   } catch (err) {
     console.error("Could not remember this thought locally:", err);
+  }
+}
+
+/* Reactions you've tapped, stored as "binId:emoji" strings so we know
+   what to highlight and what to "un-react" if tapped again.          */
+function getMyReactions() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(MY_REACTIONS_KEY)) || []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveMyReactions(set) {
+  try {
+    localStorage.setItem(MY_REACTIONS_KEY, JSON.stringify([...set]));
+  } catch (err) {
+    console.error("Could not remember reactions locally:", err);
   }
 }
 
@@ -504,10 +579,12 @@ function setupWallForm() {
     if (!text) return;
 
     const mood = document.getElementById("wallMood").value;
-    releaseThought(text, mood);
+    const image = pendingImageDataUrl;
+    releaseThought(text, mood, image);
 
     form.reset();
     counter.textContent = "0 / 200";
+    clearPendingImage();
     message.focus();
   });
 
@@ -531,9 +608,147 @@ function closeSkyModal() {
   document.body.style.overflow = "";
 }
 
+/* ---------- Sticker picker ---------- */
+function setupStickerPicker() {
+  const btn = document.getElementById("stickerBtn");
+  const panel = document.getElementById("stickerPanel");
+  const textarea = document.getElementById("wallMessage");
+  const counter = document.getElementById("charCount");
+  if (!btn || !panel || !textarea) return;
+
+  panel.innerHTML = STICKERS.map((s) =>
+    `<button type="button" class="sticker-option" data-sticker="${s}" aria-label="Insert ${s} sticker">${s}</button>`
+  ).join("");
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const willOpen = panel.hidden;
+    panel.hidden = !willOpen;
+    btn.setAttribute("aria-expanded", String(willOpen));
+  });
+
+  panel.addEventListener("click", (e) => {
+    const opt = e.target.closest(".sticker-option");
+    if (!opt) return;
+    insertAtCursor(textarea, opt.dataset.sticker);
+    counter.textContent = `${textarea.value.length} / 200`;
+    panel.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    textarea.focus();
+  });
+
+  // Click-away closes the panel.
+  document.addEventListener("click", (e) => {
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) {
+      panel.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
+/* Insert text at the current cursor position in a textarea (or append
+   it if nothing is focused), respecting the existing maxlength.      */
+function insertAtCursor(textarea, text) {
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  const before = textarea.value.slice(0, start);
+  const after = textarea.value.slice(end);
+  const max = Number(textarea.getAttribute("maxlength")) || Infinity;
+
+  textarea.value = `${before}${text}${after}`.slice(0, max);
+  const pos = Math.min(start + text.length, max);
+  textarea.setSelectionRange(pos, pos);
+}
+
+/* ---------- Picture attach ---------- */
+function setupImagePicker() {
+  const btn = document.getElementById("imageBtn");
+  const input = document.getElementById("wallImage");
+  const preview = document.getElementById("imagePreview");
+  if (!btn || !input || !preview) return;
+
+  btn.addEventListener("click", () => input.click());
+
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please choose an image file (JPG, PNG, GIF, etc.).");
+      input.value = "";
+      return;
+    }
+
+    try {
+      pendingImageDataUrl = await processImageFile(file);
+      preview.hidden = false;
+      preview.innerHTML = `
+        <img src="${pendingImageDataUrl}" alt="Attached picture preview" />
+        <button type="button" id="removeImageBtn" class="image-remove" aria-label="Remove picture">✕ Remove</button>`;
+      document.getElementById("removeImageBtn").addEventListener("click", clearPendingImage);
+    } catch (err) {
+      console.error("Could not process image:", err);
+      alert("Sorry, that picture is too large or couldn't be processed. Please try a smaller image.");
+      clearPendingImage();
+    } finally {
+      input.value = ""; // allow re-selecting the same file later
+    }
+  });
+}
+
+function clearPendingImage() {
+  pendingImageDataUrl = null;
+  const preview = document.getElementById("imagePreview");
+  if (preview) {
+    preview.hidden = true;
+    preview.innerHTML = "";
+  }
+}
+
+/* Resize + compress an image file down to a small base64 JPEG so it's
+   light enough to store as a plain string alongside the wall text.
+   Tries a looser size first, then a tighter one if that's still big. */
+async function processImageFile(file) {
+  const SIZE_LIMIT = 180000; // ~130KB decoded — keeps JSONBin records small
+
+  let dataUrl = await resizeImageToDataUrl(file, 320, 0.6);
+  if (dataUrl.length > SIZE_LIMIT) {
+    dataUrl = await resizeImageToDataUrl(file, 220, 0.45);
+  }
+  if (dataUrl.length > SIZE_LIMIT) {
+    throw new Error("Image still too large after compression");
+  }
+  return dataUrl;
+}
+
+function resizeImageToDataUrl(file, maxWidth, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = () => { img.src = reader.result; };
+    reader.onerror = () => reject(new Error("Could not read the file"));
+
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => reject(new Error("Could not load the image"));
+
+    reader.readAsDataURL(file);
+  });
+}
+
 /* Animate a thought rising out of view locally, and (if configured)
-   save it — anonymously, text + mood only — to the shared sky. */
-function releaseThought(text, mood) {
+   save it — anonymously, text + mood + optional picture — to the
+   shared sky. */
+function releaseThought(text, mood, image) {
   const stage = document.getElementById("skyStage");
   const hint = document.getElementById("skyHint");
   const color = MOOD_COLORS[mood] || MOOD_COLORS[""];
@@ -541,7 +756,7 @@ function releaseThought(text, mood) {
   const orb = document.createElement("div");
   orb.className = "thought-orb";
   orb.style.setProperty("--mood-color", color);
-  orb.textContent = mood ? `${mood} ${text}` : text;
+  orb.textContent = `${mood ? mood + " " : ""}${image ? "📷 " : ""}${text}`;
 
   // Clean up the element once its rise-and-fade animation finishes.
   orb.addEventListener("animationend", () => orb.remove());
@@ -561,7 +776,7 @@ function releaseThought(text, mood) {
     : `${releasedThisSession} thoughts released`;
 
   if (isWallConfigured()) {
-    saveToSharedSky(text, mood)
+    saveToSharedSky(text, mood, image)
       .then((id) => rememberMyThought(id, text, mood))
       .catch((err) => {
         // The local animation already played, so this failing shouldn't
@@ -571,9 +786,13 @@ function releaseThought(text, mood) {
   }
 }
 
-/* POST the released thought (anonymous: text + mood only) to JSONBin,
-   tagged into our shared collection. Returns the new bin's ID. */
-async function saveToSharedSky(text, mood) {
+/* POST the released thought (anonymous: text + mood + optional picture,
+   plus an empty reactions tally) to JSONBin, tagged into our shared
+   collection. Returns the new bin's ID. */
+async function saveToSharedSky(text, mood, image) {
+  const body = { text, mood, releasedAt: new Date().toISOString(), reactions: {} };
+  if (image) body.image = image;
+
   const res = await fetch(`${CONFIG.JSONBIN_BASE}/b`, {
     method: "POST",
     headers: {
@@ -581,7 +800,7 @@ async function saveToSharedSky(text, mood) {
       "X-Master-Key": CONFIG.JSONBIN_MASTER_KEY,
       "X-Collection-Id": CONFIG.JSONBIN_COLLECTION_ID,
     },
-    body: JSON.stringify({ text, mood, releasedAt: new Date().toISOString() }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Save failed: status ${res.status}`);
   const json = await res.json();
@@ -589,7 +808,7 @@ async function saveToSharedSky(text, mood) {
 }
 
 /* POST an anonymous reply to a thought, tagged with parentId so it can
-   be matched back to the thought it belongs to. */
+   be matched back to the thought it belongs to. Returns the new reply's ID. */
 async function postReply(parentId, text) {
   const res = await fetch(`${CONFIG.JSONBIN_BASE}/b`, {
     method: "POST",
@@ -598,9 +817,25 @@ async function postReply(parentId, text) {
       "X-Master-Key": CONFIG.JSONBIN_MASTER_KEY,
       "X-Collection-Id": CONFIG.JSONBIN_COLLECTION_ID,
     },
-    body: JSON.stringify({ parentId, text, createdAt: new Date().toISOString() }),
+    body: JSON.stringify({ parentId, text, createdAt: new Date().toISOString(), reactions: {} }),
   });
   if (!res.ok) throw new Error(`Reply failed: status ${res.status}`);
+  const json = await res.json();
+  return json.metadata.id;
+}
+
+/* PUT an updated content object back over an existing bin — used to
+   persist a reaction tally change. */
+async function putBinContent(id, content) {
+  const res = await fetch(`${CONFIG.JSONBIN_BASE}/b/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Master-Key": CONFIG.JSONBIN_MASTER_KEY,
+    },
+    body: JSON.stringify(content),
+  });
+  if (!res.ok) throw new Error(`Reaction update failed: status ${res.status}`);
 }
 
 /* Fetch the latest bins in the shared collection and split them into
@@ -633,6 +868,10 @@ async function fetchSkyBatch(limit = 50) {
       }
     })
   )).filter(Boolean);
+
+  // Keep a fresh lookup of every bin currently on screen, for reactions.
+  binCache.clear();
+  bins.forEach((b) => binCache.set(b.id, b));
 
   const thoughts = bins.filter((b) => !b.parentId);
   const commentsByParent = new Map();
@@ -688,6 +927,33 @@ async function openSkyModal({ onlyMine, title }) {
   }
 }
 
+/* Build the row of reaction buttons + counts for a thought or reply.
+   compact=true trims the emoji set down for cramped reply rows.      */
+function reactionsBarHtml(id, reactions = {}, compact = false) {
+  const emojis = compact ? REACTION_EMOJIS.slice(0, 3) : REACTION_EMOJIS;
+  const mine = getMyReactions();
+
+  return `<div class="reactions-bar${compact ? " compact" : ""}">
+    ${emojis.map((emoji) => {
+      const count = reactions[emoji] || 0;
+      const active = mine.has(`${id}:${emoji}`);
+      return `<button type="button" class="reaction-btn${active ? " active" : ""}" data-id="${id}" data-emoji="${emoji}" aria-pressed="${active}">
+        <span class="reaction-emoji">${emoji}</span>${count > 0 ? `<span class="reaction-count">${count}</span>` : ""}
+      </button>`;
+    }).join("")}
+  </div>`;
+}
+
+function replyItemHtml(reply) {
+  return `<div class="reply-item-wrap">
+    <p class="reply-item">💭 ${escapeHtml(reply.text)}</p>
+    <div class="reply-item-meta">
+      <span class="reply-time">${formatRelativeTime(reply.createdAt)}</span>
+      ${reactionsBarHtml(reply.id, reply.reactions, true)}
+    </div>
+  </div>`;
+}
+
 function renderSky(panel, thoughts, commentsByParent, { emptyMessage }) {
   if (thoughts.length === 0) {
     panel.innerHTML = `<p class="placeholder">${emptyMessage}</p>`;
@@ -698,16 +964,20 @@ function renderSky(panel, thoughts, commentsByParent, { emptyMessage }) {
     const color = MOOD_COLORS[t.mood] || MOOD_COLORS[""];
     const label = t.mood ? `${t.mood} ${escapeHtml(t.text)}` : escapeHtml(t.text);
     const replies = commentsByParent.get(t.id) || [];
+    const imageHtml = t.image ? `<img class="cloud-image" src="${t.image}" alt="Attached picture" loading="lazy" />` : "";
 
     return `
       <div class="cloud-bubble" style="--mood-color:${color}">
+        ${imageHtml}
         <p class="cloud-text">${label}</p>
+        <p class="cloud-time">${formatRelativeTime(t.releasedAt)}</p>
+        ${reactionsBarHtml(t.id, t.reactions)}
         <button type="button" class="reply-toggle" data-id="${t.id}">💬 ${replies.length ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}` : "Reply"}</button>
 
         <div class="reply-panel" data-panel-for="${t.id}" hidden>
           <div class="reply-list">
             ${replies.length
-              ? replies.map((r) => `<p class="reply-item">💭 ${escapeHtml(r.text)}</p>`).join("")
+              ? replies.map((r) => replyItemHtml(r)).join("")
               : `<p class="reply-empty">No replies yet.</p>`}
           </div>
           <form class="reply-form" data-parent="${t.id}">
@@ -719,52 +989,125 @@ function renderSky(panel, thoughts, commentsByParent, { emptyMessage }) {
       </div>`;
   }).join("")}</div>`;
 
-  wireReplyInteractions(panel);
+  wireBubbleInteractions(panel);
 }
 
-/* Expand/collapse reply panels and handle reply-form submissions
-   for whichever sky panel (View Sky or Universe Reply) is showing. */
-function wireReplyInteractions(panel) {
-  panel.querySelectorAll(".reply-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const target = panel.querySelector(`.reply-panel[data-panel-for="${btn.dataset.id}"]`);
-      target.hidden = !target.hidden;
-    });
+/* One set of delegated listeners handles reply-toggle clicks, reaction
+   clicks, and reply-form submissions for the whole sky panel — so newly
+   inserted replies work immediately without re-binding anything.      */
+function wireBubbleInteractions(panel) {
+  panel.addEventListener("click", handlePanelClick);
+  panel.addEventListener("submit", handlePanelSubmit);
+}
+
+function handlePanelClick(e) {
+  const panel = e.currentTarget;
+
+  const toggleBtn = e.target.closest(".reply-toggle");
+  if (toggleBtn) {
+    const target = panel.querySelector(`.reply-panel[data-panel-for="${toggleBtn.dataset.id}"]`);
+    if (target) target.hidden = !target.hidden;
+    return;
+  }
+
+  const reactionBtn = e.target.closest(".reaction-btn");
+  if (reactionBtn) {
+    handleReactionClick(reactionBtn);
+  }
+}
+
+/* Toggle a reaction on/off for a thought or reply: updates the UI
+   instantly, remembers the choice locally, then persists the new
+   tally to JSONBin in the background. */
+function handleReactionClick(btn) {
+  const id = btn.dataset.id;
+  const emoji = btn.dataset.emoji;
+  const content = binCache.get(id);
+  if (!content) return;
+
+  const mine = getMyReactions();
+  const key = `${id}:${emoji}`;
+  const alreadyReacted = mine.has(key);
+
+  content.reactions = content.reactions || {};
+  const current = content.reactions[emoji] || 0;
+  const nextCount = alreadyReacted ? Math.max(0, current - 1) : current + 1;
+  content.reactions[emoji] = nextCount;
+
+  if (alreadyReacted) mine.delete(key);
+  else mine.add(key);
+  saveMyReactions(mine);
+
+  updateReactionButtonUI(btn, nextCount, !alreadyReacted);
+
+  const { id: _drop, ...bodyToSave } = content;
+  putBinContent(id, bodyToSave).catch((err) => {
+    console.error("Could not save reaction:", err);
   });
+}
 
-  panel.querySelectorAll(".reply-form").forEach((form) => {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const input = form.querySelector(".reply-input");
-      const errorEl = form.nextElementSibling; // .reply-error
-      const text = input.value.trim();
-      if (!text) return;
+function updateReactionButtonUI(btn, count, active) {
+  btn.classList.toggle("active", active);
+  btn.setAttribute("aria-pressed", String(active));
 
-      if (containsBadWords(text)) {
-        errorEl.hidden = false;
-        errorEl.textContent = "🚫 Let's keep replies kind — please rephrase your comment.";
-        return;
-      }
-      errorEl.hidden = true;
+  let countEl = btn.querySelector(".reaction-count");
+  if (count > 0) {
+    if (!countEl) {
+      countEl = document.createElement("span");
+      countEl.className = "reaction-count";
+      btn.appendChild(countEl);
+    }
+    countEl.textContent = String(count);
+  } else if (countEl) {
+    countEl.remove();
+  }
+}
 
-      const submitBtn = form.querySelector(".reply-submit");
-      submitBtn.disabled = true;
-      try {
-        await postReply(form.dataset.parent, text);
-        input.value = "";
-        const list = form.previousElementSibling; // .reply-list
-        const empty = list.querySelector(".reply-empty");
-        if (empty) empty.remove();
-        list.insertAdjacentHTML("beforeend", `<p class="reply-item">💭 ${escapeHtml(text)}</p>`);
-      } catch (err) {
-        console.error("Post reply error:", err);
-        errorEl.hidden = false;
-        errorEl.textContent = "😕 Couldn't send your reply. Please try again.";
-      } finally {
-        submitBtn.disabled = false;
-      }
-    });
-  });
+async function handlePanelSubmit(e) {
+  const form = e.target.closest(".reply-form");
+  if (!form) return;
+  e.preventDefault();
+
+  const input = form.querySelector(".reply-input");
+  const errorEl = form.nextElementSibling; // .reply-error
+  const text = input.value.trim();
+  if (!text) return;
+
+  if (containsBadWords(text)) {
+    errorEl.hidden = false;
+    errorEl.textContent = "🚫 Let's keep replies kind — please rephrase your comment.";
+    return;
+  }
+  errorEl.hidden = true;
+
+  const submitBtn = form.querySelector(".reply-submit");
+  submitBtn.disabled = true;
+  try {
+    const createdAt = new Date().toISOString();
+    const newId = await postReply(form.dataset.parent, text);
+    const replyObj = { id: newId, parentId: form.dataset.parent, text, createdAt, reactions: {} };
+    binCache.set(newId, replyObj);
+
+    input.value = "";
+    const list = form.previousElementSibling; // .reply-list
+    const empty = list.querySelector(".reply-empty");
+    if (empty) empty.remove();
+    list.insertAdjacentHTML("beforeend", replyItemHtml(replyObj));
+
+    // Keep the visible reply count on the toggle button in sync.
+    const bubble = form.closest(".cloud-bubble");
+    const toggleBtn = bubble?.querySelector(".reply-toggle");
+    if (toggleBtn) {
+      const count = list.querySelectorAll(".reply-item-wrap").length;
+      toggleBtn.textContent = `💬 ${count} ${count === 1 ? "reply" : "replies"}`;
+    }
+  } catch (err) {
+    console.error("Post reply error:", err);
+    errorEl.hidden = false;
+    errorEl.textContent = "😕 Couldn't send your reply. Please try again.";
+  } finally {
+    submitBtn.disabled = false;
+  }
 }
 
 /* =========================================================
@@ -772,9 +1115,11 @@ function wireReplyInteractions(panel) {
    ========================================================= */
 function init() {
   showTodayDate();
-  buildZodiacGrid();   // Daily Horoscope UI (GET)
-  setupChartForm();    // Birth Chart UI (POST)
-  setupWallForm();     // Freedom Wall UI (release into the sky)
+  buildZodiacGrid();    // Daily Horoscope UI (GET)
+  setupChartForm();     // Birth Chart UI (POST)
+  setupWallForm();      // Freedom Wall UI (release into the sky)
+  setupStickerPicker(); // Freedom Wall stickers
+  setupImagePicker();   // Freedom Wall picture attach
 }
 
 document.addEventListener("DOMContentLoaded", init);
